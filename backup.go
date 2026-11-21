@@ -21,11 +21,20 @@ const backupPageSize = 1000
 
 const backupEventsFile = "events.jsonl"
 
+// a signed auth event is about 1 kB once form encoded
+const maxBackupFormSize = 16 << 10
+
 // serveBackup streams a zip of every stored event and of the moderation state,
 // whose admin.json restores as is next to the database.
 func serveBackup(store eventstore.Store, m *moderation, admins []nostr.PubKey) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := checkAdminHTTPAuth(r, admins); err != nil {
+		authorization := r.Header.Get("Authorization")
+		if authorization == "" {
+			// the console posts a form so the browser streams the zip to disk
+			r.Body = http.MaxBytesReader(w, r.Body, maxBackupFormSize)
+			authorization = r.PostFormValue("authorization")
+		}
+		if err := checkAdminHTTPAuth(r, authorization, admins); err != nil {
 			http.Error(w, "unauthorized: "+err.Error(), http.StatusUnauthorized)
 			return
 		}

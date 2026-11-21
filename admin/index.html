@@ -140,8 +140,11 @@
       <p class="muted lead">A zip of every stored event, one per line in <code>events.jsonl</code>, and of the moderation decisions and relay info in <code>admin.json</code>. It holds the gift wraps and the deletions only their authors can read: keep it as private as the server.</p>
       <div class="actions">
         <button type="button" class="primary" data-backup>Download backup</button>
-        <span class="muted" data-progress></span>
       </div>
+      <form method="post" action="backup" target="backup-download" hidden data-backup-form>
+        <input type="hidden" name="authorization">
+      </form>
+      <iframe name="backup-download" title="Backup download" hidden data-backup-frame></iframe>
       <p class="error" role="alert" data-error hidden></p>
     </section>
   </div>

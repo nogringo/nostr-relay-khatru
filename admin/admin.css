@@ -166,7 +166,6 @@ textarea { resize: vertical; }
 .error { color: var(--red); margin-bottom: 1rem; }
 
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1rem; margin-bottom: 1rem; }
-.actions [data-progress] { font-variant-numeric: tabular-nums; }
 
 .entries {
   list-style: none;

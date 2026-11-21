@@ -140,11 +140,15 @@ func attachAdmin(relay *khatru.Relay, store eventstore.Store, m *moderation, adm
 // checkHTTPAuth covers the NIP-98 rules khatru leaves out: it checks the
 // signature, the u and payload tags and that the event is not too old.
 func checkHTTPAuth(r *http.Request) (nostr.Event, error) {
-	var evt nostr.Event
 	if r == nil {
-		return evt, errors.New("missing request")
+		return nostr.Event{}, errors.New("missing request")
 	}
-	raw, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(r.Header.Get("Authorization"), "Nostr "))
+	return parseHTTPAuth(r.Header.Get("Authorization"))
+}
+
+func parseHTTPAuth(authorization string) (nostr.Event, error) {
+	var evt nostr.Event
+	raw, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(authorization, "Nostr "))
 	if err != nil {
 		return evt, errors.New("invalid base64 auth")
 	}
@@ -165,8 +169,8 @@ func checkHTTPAuth(r *http.Request) (nostr.Event, error) {
 
 // checkAdminHTTPAuth is the whole NIP-98 check, for the routes khatru does not
 // serve itself.
-func checkAdminHTTPAuth(r *http.Request, admins []nostr.PubKey) error {
-	evt, err := checkHTTPAuth(r)
+func checkAdminHTTPAuth(r *http.Request, authorization string, admins []nostr.PubKey) error {
+	evt, err := parseHTTPAuth(authorization)
 	if err != nil {
 		return err
 	}
@@ -207,7 +211,7 @@ func withAdminHeaders(next http.Handler) http.Handler {
 		// NIP-07 extensions inject their provider script from their own scheme
 		h.Set("Content-Security-Policy", "default-src 'self'; "+
 			"script-src 'self' chrome-extension: moz-extension: safari-web-extension:; "+
-			"img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+			"img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("Cache-Control", "no-cache")

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -26,6 +27,16 @@ func (s managementServer) backup(t *testing.T, sk nostr.SecretKey, edit func(*no
 	mustSucceed(t, err)
 	req.Header.Set("Authorization", httpAuth(t, sk, url, nil, edit))
 	resp, err := http.DefaultClient.Do(req)
+	mustSucceed(t, err)
+	t.Cleanup(func() { resp.Body.Close() })
+	return resp
+}
+
+// backupByForm posts the auth the way the console does, in a form field.
+func (s managementServer) backupByForm(t *testing.T, sk nostr.SecretKey, edit func(*nostr.Event)) *http.Response {
+	t.Helper()
+	url := s.url + "/admin/backup"
+	resp, err := http.PostForm(url, neturl.Values{"authorization": {httpAuth(t, sk, url, nil, edit)}})
 	mustSucceed(t, err)
 	t.Cleanup(func() { resp.Body.Close() })
 	return resp
@@ -99,6 +110,27 @@ func TestBackupHoldsEveryEventAndTheModerationState(t *testing.T) {
 	}
 }
 
+func TestBackupAcceptsTheAuthInAFormField(t *testing.T) {
+	s := startManagementServer(t)
+	event := sign(t, nostr.Generate(), 1, nil)
+	save(t, s.store, event)
+
+	resp := s.backupByForm(t, s.admin, nil)
+	body, err := io.ReadAll(resp.Body)
+	mustSucceed(t, err)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /admin/backup: %d %s", resp.StatusCode, body)
+	}
+	if got := resp.Header.Get("Content-Disposition"); !strings.HasPrefix(got, "attachment;") {
+		t.Errorf("Content-Disposition = %q, the browser would not save it as a download", got)
+	}
+	archive, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	mustSucceed(t, err)
+	if got, want := strings.TrimSpace(string(readZipEntry(t, archive, backupEventsFile))), event.String(); got != want {
+		t.Errorf("events.jsonl = %s, want %s", got, want)
+	}
+}
+
 func TestBackupRequiresAnAdminSignature(t *testing.T) {
 	s := startManagementServer(t)
 	save(t, s.store, sign(t, nostr.Generate(), 1, nil))
@@ -115,15 +147,32 @@ func TestBackupRequiresAnAdminSignature(t *testing.T) {
 		"another kind":   {s.admin, func(e *nostr.Event) { e.Kind = 1 }},
 		"another method": {s.admin, func(e *nostr.Event) { e.Tags[1] = nostr.Tag{"method", "GET"} }},
 	}
-	for name, c := range cases {
-		t.Run(name, func(t *testing.T) {
-			resp := s.backup(t, c.sk, c.edit)
-			body, _ := io.ReadAll(resp.Body)
-			if resp.StatusCode != http.StatusUnauthorized || !strings.HasPrefix(string(body), "unauthorized:") {
-				t.Errorf("POST /admin/backup: %d %s", resp.StatusCode, body)
-			}
-		})
+	senders := map[string]func(*testing.T, nostr.SecretKey, func(*nostr.Event)) *http.Response{
+		"header": s.backup,
+		"form":   s.backupByForm,
 	}
+	for via, send := range senders {
+		for name, c := range cases {
+			t.Run(via+"/"+name, func(t *testing.T) {
+				resp := send(t, c.sk, c.edit)
+				body, _ := io.ReadAll(resp.Body)
+				if resp.StatusCode != http.StatusUnauthorized || !strings.HasPrefix(string(body), "unauthorized:") {
+					t.Errorf("POST /admin/backup: %d %s", resp.StatusCode, body)
+				}
+			})
+		}
+	}
+
+	t.Run("oversized form", func(t *testing.T) {
+		url := s.url + "/admin/backup"
+		auth := httpAuth(t, s.admin, url, nil, nil)
+		resp, err := http.PostForm(url, neturl.Values{"authorization": {auth}, "padding": {strings.Repeat("x", maxBackupFormSize)}})
+		mustSucceed(t, err)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("POST /admin/backup: %d", resp.StatusCode)
+		}
+	})
 
 	t.Run("no signature", func(t *testing.T) {
 		resp, err := http.Post(s.url+"/admin/backup", "", nil)
