@@ -10,6 +10,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"slices"
 	"strings"
@@ -53,7 +54,7 @@ func attachAdmin(relay *khatru.Relay, store eventstore.Store, m *moderation, adm
 		if !slices.Contains(admins, caller) {
 			return true, "unauthorized: this pubkey is not an admin of this relay"
 		}
-		if err := checkHTTPAuth(khatru.GetRequest(ctx)); err != nil {
+		if _, err := checkHTTPAuth(khatru.GetRequest(ctx)); err != nil {
 			return true, "unauthorized: " + err.Error()
 		}
 		return false, ""
@@ -131,34 +132,73 @@ func attachAdmin(relay *khatru.Relay, store eventstore.Store, m *moderation, adm
 		panic(err)
 	}
 	relay.Router().Handle("GET /admin/", withAdminHeaders(http.StripPrefix("/admin/", http.FileServerFS(ui))))
+	relay.Router().Handle("POST /admin/backup", serveBackup(store, m, admins))
 
 	log.Printf("admin interface enabled on /admin/ for %d pubkey(s)", len(admins))
 }
 
 // checkHTTPAuth covers the NIP-98 rules khatru leaves out: it checks the
 // signature, the u and payload tags and that the event is not too old.
-func checkHTTPAuth(r *http.Request) error {
+func checkHTTPAuth(r *http.Request) (nostr.Event, error) {
+	var evt nostr.Event
 	if r == nil {
-		return errors.New("missing request")
+		return evt, errors.New("missing request")
 	}
 	raw, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(r.Header.Get("Authorization"), "Nostr "))
 	if err != nil {
-		return errors.New("invalid base64 auth")
+		return evt, errors.New("invalid base64 auth")
 	}
-	var evt nostr.Event
 	if err := json.Unmarshal(raw, &evt); err != nil {
-		return errors.New("invalid auth event json")
+		return evt, errors.New("invalid auth event json")
 	}
 	if evt.Kind != nostr.KindHTTPAuth {
-		return errors.New("the auth event must be a kind 27235")
+		return evt, errors.New("the auth event must be a kind 27235")
 	}
 	if method := evt.Tags.Find("method"); method == nil || method[1] != http.MethodPost {
-		return errors.New(`the auth event must carry a "method" tag of POST`)
+		return evt, errors.New(`the auth event must carry a "method" tag of POST`)
 	}
 	if evt.CreatedAt > nostr.Now()+httpAuthClockSkew {
-		return errors.New("the auth event is dated in the future")
+		return evt, errors.New("the auth event is dated in the future")
+	}
+	return evt, nil
+}
+
+// checkAdminHTTPAuth is the whole NIP-98 check, for the routes khatru does not
+// serve itself.
+func checkAdminHTTPAuth(r *http.Request, admins []nostr.PubKey) error {
+	evt, err := checkHTTPAuth(r)
+	if err != nil {
+		return err
+	}
+	if !evt.VerifySignature() {
+		return errors.New("invalid auth event signature")
+	}
+	if evt.CreatedAt < nostr.Now()-httpAuthClockSkew {
+		return errors.New("auth event is too old")
+	}
+	if !isRequestURL(evt.Tags.Find("u"), r) {
+		return errors.New(`the "u" tag must be the URL of this request`)
+	}
+	if !slices.Contains(admins, evt.PubKey) {
+		return errors.New("this pubkey is not an admin of this relay")
 	}
 	return nil
+}
+
+// isRequestURL leaves the scheme out: behind the TLS proxy the relay cannot see it.
+func isRequestURL(tag nostr.Tag, r *http.Request) bool {
+	if tag == nil {
+		return false
+	}
+	u, err := url.Parse(tag[1])
+	if err != nil {
+		return false
+	}
+	host := r.Header.Get("X-Forwarded-Host")
+	if host == "" {
+		host = r.Host
+	}
+	return strings.EqualFold(u.Host, host) && u.Path == r.URL.Path && u.RawQuery == r.URL.RawQuery
 }
 
 func withAdminHeaders(next http.Handler) http.Handler {

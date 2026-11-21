@@ -127,19 +127,25 @@ function base64(text) {
   return btoa(binary);
 }
 
-async function call(method, params = []) {
-  const body = JSON.stringify({ method, params });
+async function httpAuth(url, body) {
+  const tags = [["u", url], ["method", "POST"]];
+  if (body) tags.push(["payload", await sha256Hex(body)]);
   const auth = await window.nostr.signEvent({
     kind: 27235,
     created_at: Math.floor(Date.now() / 1000),
     content: "",
-    tags: [["u", relayURL], ["method", "POST"], ["payload", await sha256Hex(body)]],
+    tags,
   });
+  return "Nostr " + base64(JSON.stringify(auth));
+}
+
+async function call(method, params = []) {
+  const body = JSON.stringify({ method, params });
   const response = await fetch(relayURL, {
     method: "POST",
     headers: {
       "Content-Type": "application/nostr+json+rpc",
-      Authorization: "Nostr " + base64(JSON.stringify(auth)),
+      Authorization: await httpAuth(relayURL, body),
     },
     body,
   });
@@ -340,10 +346,48 @@ infoForm.addEventListener("submit", async (event) => {
   button.disabled = infoChanges().length === 0;
 });
 
+// Backup
+
+const backupURL = new URL("backup", location.href).href;
+const backupButton = $("[data-backup]");
+const backupProgress = $("[data-progress]", panelOf("backup"));
+
+function formatSize(bytes) {
+  if (bytes < 1e6) return `${Math.ceil(bytes / 1e3)} kB`;
+  return `${(bytes / 1e6).toLocaleString(undefined, { maximumFractionDigits: 1 })} MB`;
+}
+
+async function downloadBackup() {
+  const response = await fetch(backupURL, { method: "POST", headers: { Authorization: await httpAuth(backupURL) } });
+  if (!response.ok) throw new Error((await response.text()).trim());
+
+  const chunks = [];
+  let size = 0;
+  const reader = response.body.getReader();
+  try {
+    for (let read = await reader.read(); !read.done; read = await reader.read()) {
+      chunks.push(read.value);
+      size += read.value.length;
+      backupProgress.textContent = `${formatSize(size)} received`;
+    }
+  } finally {
+    backupProgress.textContent = "";
+  }
+
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob(chunks, { type: "application/zip" }));
+  link.download = /filename="([^"]+)"/.exec(response.headers.get("Content-Disposition"))?.[1] ?? "nostr-relay-backup.zip";
+  link.click();
+  // revoking at once can cancel the download in some browsers
+  setTimeout(() => URL.revokeObjectURL(link.href), 60_000);
+}
+
+backupButton.addEventListener("click", () => run(panelOf("backup"), backupButton, downloadBackup));
+
 // Navigation
 
 async function loadPanel(name, force = false) {
-  if (!force && loaded.has(name)) return;
+  if (name === "backup" || (!force && loaded.has(name))) return;
   const panel = panelOf(name);
   await run(panel, $("[data-refresh]", panel), async () => {
     if (name === "overview") renderStats(await call("stats"));

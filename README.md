@@ -82,7 +82,9 @@ From there you can:
 - refuse an event kind;
 - rename the relay, edit its description and icon;
 - see how many events are stored, and how many connections and
-  subscriptions are open.
+  subscriptions are open;
+- download a backup: a zip holding every stored event in `events.jsonl`, one
+  JSON event per line, and the decisions below in `admin.json`.
 
 Deletion requests (kind 5) and vanish requests (kind 62) are never banned,
 deleted or refused, whoever sends them: users can always take their data back.
@@ -91,6 +93,12 @@ The decisions are saved in `admin.json`, next to the database, and stay
 enforced if `ADMIN_PUBKEYS` is removed. Relay info saved from the console takes
 precedence over `RELAY_NAME`, `RELAY_DESCRIPTION` and `RELAY_ICON`. The page
 needs HTTPS (or `localhost`) to sign requests.
+
+The backup is written while the relay keeps running. It holds everything the
+relay stores, gift wraps and the deletions only their authors can read
+included, so keep it as private as the server. It is served on
+`POST /admin/backup` to the same NIP-98 signatures, which lets a script fetch
+it too.
 
 ## Supported NIPs
 

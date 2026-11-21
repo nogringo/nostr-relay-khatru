@@ -38,6 +38,7 @@
       <button type="button" data-tab="ips">IP addresses</button>
       <button type="button" data-tab="kinds">Kinds</button>
       <button type="button" data-tab="info">Relay info</button>
+      <button type="button" data-tab="backup">Backup</button>
     </nav>
 
     <section data-panel="overview">
@@ -129,6 +130,18 @@
         <label>Icon URL <input name="icon" type="url" placeholder="https://example.com/icon.png" autocomplete="off"></label>
         <button class="primary" disabled>Save changes</button>
       </form>
+      <p class="error" role="alert" data-error hidden></p>
+    </section>
+
+    <section data-panel="backup" hidden>
+      <div class="panel-head">
+        <h2>Backup</h2>
+      </div>
+      <p class="muted lead">A zip of every stored event, one per line in <code>events.jsonl</code>, and of the moderation decisions and relay info in <code>admin.json</code>. It holds the gift wraps and the deletions only their authors can read: keep it as private as the server.</p>
+      <div class="actions">
+        <button type="button" class="primary" data-backup>Download backup</button>
+        <span class="muted" data-progress></span>
+      </div>
       <p class="error" role="alert" data-error hidden></p>
     </section>
   </div>

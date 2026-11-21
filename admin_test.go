@@ -255,10 +255,11 @@ func TestModerationKeepsNothingItCouldNotSave(t *testing.T) {
 // NIP-86 over HTTP
 
 type managementServer struct {
-	url   string
-	relay *khatru.Relay
-	store *slicestore.SliceStore
-	admin nostr.SecretKey
+	url        string
+	relay      *khatru.Relay
+	store      *slicestore.SliceStore
+	moderation *moderation
+	admin      nostr.SecretKey
 }
 
 func startManagementServer(t *testing.T) managementServer {
@@ -268,7 +269,7 @@ func startManagementServer(t *testing.T) managementServer {
 	attachAdmin(relay, store, m, []nostr.PubKey{nostr.GetPublicKey(admin)})
 	server := httptest.NewServer(relay)
 	t.Cleanup(server.Close)
-	return managementServer{url: server.URL, relay: relay, store: store, admin: admin}
+	return managementServer{url: server.URL, relay: relay, store: store, moderation: m, admin: admin}
 }
 
 type managementReply struct {
@@ -276,20 +277,17 @@ type managementReply struct {
 	Error  string          `json:"error"`
 }
 
-func (s managementServer) call(t *testing.T, sk nostr.SecretKey, method string, params []any, edit func(*nostr.Event)) managementReply {
+// httpAuth signs a NIP-98 Authorization header for a POST to url.
+func httpAuth(t *testing.T, sk nostr.SecretKey, url string, body []byte, edit func(*nostr.Event)) string {
 	t.Helper()
-	body, err := json.Marshal(map[string]any{"method": method, "params": params})
-	mustSucceed(t, err)
-	hash := sha256.Sum256(body)
-
 	auth := nostr.Event{
 		Kind:      nostr.KindHTTPAuth,
 		CreatedAt: nostr.Now(),
-		Tags: nostr.Tags{
-			{"u", s.url + "/"},
-			{"method", "POST"},
-			{"payload", nostr.HexEncodeToString(hash[:])},
-		},
+		Tags:      nostr.Tags{{"u", url}, {"method", "POST"}},
+	}
+	if body != nil {
+		hash := sha256.Sum256(body)
+		auth.Tags = append(auth.Tags, nostr.Tag{"payload", nostr.HexEncodeToString(hash[:])})
 	}
 	if edit != nil {
 		edit(&auth)
@@ -297,11 +295,18 @@ func (s managementServer) call(t *testing.T, sk nostr.SecretKey, method string, 
 	mustSucceed(t, auth.Sign(sk))
 	authJSON, err := json.Marshal(auth)
 	mustSucceed(t, err)
+	return "Nostr " + base64.StdEncoding.EncodeToString(authJSON)
+}
+
+func (s managementServer) call(t *testing.T, sk nostr.SecretKey, method string, params []any, edit func(*nostr.Event)) managementReply {
+	t.Helper()
+	body, err := json.Marshal(map[string]any{"method": method, "params": params})
+	mustSucceed(t, err)
 
 	req, err := http.NewRequest(http.MethodPost, s.url+"/", bytes.NewReader(body))
 	mustSucceed(t, err)
 	req.Header.Set("Content-Type", "application/nostr+json+rpc")
-	req.Header.Set("Authorization", "Nostr "+base64.StdEncoding.EncodeToString(authJSON))
+	req.Header.Set("Authorization", httpAuth(t, sk, s.url+"/", body, edit))
 	resp, err := http.DefaultClient.Do(req)
 	mustSucceed(t, err)
 	defer resp.Body.Close()
