@@ -32,6 +32,13 @@ func main() {
 	configureCountFromEnv(relay)
 	limitConnections(relay)
 	limitRequests(relay)
+	mod, err := attachModeration(relay, moderationStatePath)
+	if err != nil {
+		panic(err)
+	}
+	if admins := adminPubKeysFromEnv(); len(admins) > 0 {
+		attachAdmin(relay, db, mod, admins)
+	}
 
 	// NIP-42 host validation trusts the Host the reverse proxy forwards, so the
 	// relay must stay reachable only through that proxy: bind to loopback by

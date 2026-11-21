@@ -36,7 +36,7 @@ func applyRelayInfo(relay *khatru.Relay) {
 	relay.Info.Software = software
 	relay.Info.Version = version()
 
-	// khatru advertises NIP-86 by default, but no management API is wired here.
+	// khatru advertises NIP-86 by default, attachAdmin puts it back when enabled.
 	relay.Info.SupportedNIPs = slices.DeleteFunc(relay.Info.SupportedNIPs, func(n any) bool { return n == 86 })
 	relay.Info.AddSupportedNIPs([]string{"59", "62"})
 

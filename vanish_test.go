@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -35,6 +36,12 @@ func newVanishTestRelayOver(t *testing.T, store *slicestore.SliceStore, relayURL
 // wireRelay applies the same hooks as main(), in the same order.
 func wireRelay(t *testing.T, store eventstore.Store, relayURLs []string) (*khatru.Relay, *vanishRequests) {
 	t.Helper()
+	relay, v, _ := wireRelayWithModeration(t, store, relayURLs)
+	return relay, v
+}
+
+func wireRelayWithModeration(t *testing.T, store eventstore.Store, relayURLs []string) (*khatru.Relay, *vanishRequests, *moderation) {
+	t.Helper()
 	relay := khatru.NewRelay()
 	relay.UseEventstore(store, maxQueryLimit)
 	applyQueryLimits(relay, store)
@@ -46,7 +53,11 @@ func wireRelay(t *testing.T, store eventstore.Store, relayURLs []string) (*khatr
 	configureCountFromEnv(relay)
 	limitConnections(relay)
 	limitRequests(relay)
-	return relay, v
+	m, err := attachModeration(relay, filepath.Join(t.TempDir(), moderationStatePath))
+	if err != nil {
+		t.Fatalf("attach moderation: %v", err)
+	}
+	return relay, v, m
 }
 
 func waitPurged(t *testing.T, v *vanishRequests) {

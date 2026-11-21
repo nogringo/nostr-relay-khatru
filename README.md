@@ -64,6 +64,34 @@ which URLs designate it.
 Resync an inbox from scratch in seconds, not minutes. NIP-77 is built in
 and on by default. Set `NIP77_ENABLED=false` to turn it off.
 
+## Admin interface
+
+Set `ADMIN_PUBKEYS` to one or more pubkeys (npub or hex, comma separated) and
+the relay serves a moderation console on `/admin/`. Sign in with a NIP-07
+browser extension holding one of those keys: every action is a
+[NIP-86](https://github.com/nostr-protocol/nips/blob/master/86.md) call
+authorized by a NIP-98 signature, so any NIP-86 client works too.
+
+From there you can:
+
+- ban a pubkey: it can no longer publish, and what it already published is
+  deleted;
+- ban an event: it is deleted and refused if anyone publishes it again;
+- block an IP address: it can no longer connect, publish or subscribe (this
+  needs the reverse proxy to send `X-Forwarded-For`);
+- refuse an event kind;
+- rename the relay, edit its description and icon;
+- see how many events are stored, and how many connections and
+  subscriptions are open.
+
+Deletion requests (kind 5) and vanish requests (kind 62) are never banned,
+deleted or refused, whoever sends them: users can always take their data back.
+
+The decisions are saved in `admin.json`, next to the database, and stay
+enforced if `ADMIN_PUBKEYS` is removed. Relay info saved from the console takes
+precedence over `RELAY_NAME`, `RELAY_DESCRIPTION` and `RELAY_ICON`. The page
+needs HTTPS (or `localhost`) to sign requests.
+
 ## Supported NIPs
 
 General-purpose: this is not a single-purpose inbox relay. It speaks the
@@ -89,3 +117,4 @@ full protocol.
 | 62 | Request to Vanish | OK |
 | 70 | Protected Events | OK |
 | 77 | Negentropy | OK |
+| 86 | Relay Management API (with `ADMIN_PUBKEYS`) | OK |

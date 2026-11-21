@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Relay admin</title>
+<link rel="stylesheet" href="admin.css">
+<script src="admin.js" defer></script>
+</head>
+<body>
+<div class="airmail" aria-hidden="true"></div>
+
+<header class="top">
+  <div>
+    <h1 id="relay-name">Relay admin</h1>
+    <p id="relay-url" class="muted"></p>
+  </div>
+  <div id="session" class="session" hidden>
+    <span id="admin-npub" class="mono clip"></span>
+    <button id="sign-out" type="button" class="quiet">Sign out</button>
+  </div>
+</header>
+
+<main>
+  <section id="sign-in" class="sign-in">
+    <h2>Sign in</h2>
+    <p>Use the Nostr extension that holds one of the keys listed in <code>ADMIN_PUBKEYS</code>. Each action asks it for a signature.</p>
+    <button id="sign-in-button" type="button" class="primary">Sign in with extension</button>
+    <p id="sign-in-error" class="error" role="alert" hidden></p>
+  </section>
+
+  <div id="console" hidden>
+    <nav class="tabs" aria-label="Sections">
+      <button type="button" data-tab="overview" aria-current="page">Overview</button>
+      <button type="button" data-tab="pubkeys">Pubkeys</button>
+      <button type="button" data-tab="events">Events</button>
+      <button type="button" data-tab="ips">IP addresses</button>
+      <button type="button" data-tab="kinds">Kinds</button>
+      <button type="button" data-tab="info">Relay info</button>
+    </nav>
+
+    <section data-panel="overview">
+      <div class="panel-head">
+        <h2>Overview</h2>
+        <button type="button" class="quiet" data-refresh>Refresh</button>
+      </div>
+      <dl class="stats">
+        <div><dt>Stored events</dt><dd data-stat="events">-</dd></div>
+        <div><dt>Open connections</dt><dd data-stat="connections">-</dd></div>
+        <div><dt>Live subscriptions</dt><dd data-stat="subscriptions">-</dd></div>
+        <div><dt>Running for</dt><dd data-stat="uptime">-</dd></div>
+        <div><dt>Version</dt><dd data-stat="version">-</dd></div>
+      </dl>
+      <p class="error" role="alert" data-error hidden></p>
+    </section>
+
+    <section data-panel="pubkeys" hidden>
+      <div class="panel-head">
+        <h2>Banned pubkeys</h2>
+        <button type="button" class="quiet" data-refresh>Refresh</button>
+      </div>
+      <p class="muted lead">A banned pubkey can no longer publish here, and everything it already published is deleted. Its deletion and vanish requests are still accepted, so it can always take its data back.</p>
+      <form data-form>
+        <label>Pubkey <input name="entry" placeholder="npub1... or hex" required autocomplete="off" spellcheck="false"></label>
+        <label>Reason <input name="reason" placeholder="Optional" autocomplete="off"></label>
+        <button class="danger">Ban and delete events</button>
+      </form>
+      <p class="error" role="alert" data-error hidden></p>
+      <ul class="entries" data-list></ul>
+      <p class="muted" data-empty hidden>No pubkey is banned.</p>
+    </section>
+
+    <section data-panel="events" hidden>
+      <div class="panel-head">
+        <h2>Banned events</h2>
+        <button type="button" class="quiet" data-refresh>Refresh</button>
+      </div>
+      <p class="muted lead">A banned event is deleted and refused if anyone publishes it again. Deletion and vanish requests cannot be banned.</p>
+      <form data-form>
+        <label>Event <input name="entry" placeholder="nevent1..., note1... or hex id" required autocomplete="off" spellcheck="false"></label>
+        <label>Reason <input name="reason" placeholder="Optional" autocomplete="off"></label>
+        <button class="danger">Ban and delete</button>
+      </form>
+      <p class="error" role="alert" data-error hidden></p>
+      <ul class="entries" data-list></ul>
+      <p class="muted" data-empty hidden>No event is banned.</p>
+    </section>
+
+    <section data-panel="ips" hidden>
+      <div class="panel-head">
+        <h2>Blocked IP addresses</h2>
+        <button type="button" class="quiet" data-refresh>Refresh</button>
+      </div>
+      <p class="muted lead">A blocked address cannot open new connections, and its open ones can no longer publish or subscribe. This relies on the reverse proxy sending <code>X-Forwarded-For</code>.</p>
+      <form data-form>
+        <label>IP address <input name="entry" placeholder="203.0.113.7 or 2001:db8::1" required autocomplete="off" spellcheck="false"></label>
+        <label>Reason <input name="reason" placeholder="Optional" autocomplete="off"></label>
+        <button class="danger">Block</button>
+      </form>
+      <p class="error" role="alert" data-error hidden></p>
+      <ul class="entries" data-list></ul>
+      <p class="muted" data-empty hidden>No address is blocked.</p>
+    </section>
+
+    <section data-panel="kinds" hidden>
+      <div class="panel-head">
+        <h2>Refused kinds</h2>
+        <button type="button" class="quiet" data-refresh>Refresh</button>
+      </div>
+      <p class="muted lead">New events of a refused kind are turned away. Stored ones stay. Kinds 5 and 62 are always accepted.</p>
+      <form data-form>
+        <label>Kind <input name="entry" inputmode="numeric" placeholder="1984" required autocomplete="off"></label>
+        <button class="danger">Refuse kind</button>
+      </form>
+      <p class="error" role="alert" data-error hidden></p>
+      <ul class="entries" data-list></ul>
+      <p class="muted" data-empty hidden>Every kind is accepted.</p>
+    </section>
+
+    <section data-panel="info" hidden>
+      <div class="panel-head">
+        <h2>Relay info</h2>
+      </div>
+      <p class="muted lead">What clients read in the NIP-11 document. Saved values take precedence over <code>RELAY_NAME</code>, <code>RELAY_DESCRIPTION</code> and <code>RELAY_ICON</code>.</p>
+      <form data-info-form class="stacked">
+        <label>Name <input name="name" autocomplete="off"></label>
+        <label>Description <textarea name="description" rows="3"></textarea></label>
+        <label>Icon URL <input name="icon" type="url" placeholder="https://example.com/icon.png" autocomplete="off"></label>
+        <button class="primary" disabled>Save changes</button>
+      </form>
+      <p class="error" role="alert" data-error hidden></p>
+    </section>
+  </div>
+</main>
+</body>
+</html>
